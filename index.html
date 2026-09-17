@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pollinations Chatbot — GPT-4o Mini + Flux</title>
+</head>
+<body>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f7f7f8; color: #1a1a1a; margin: 0; padding: 24px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 2px; }
+  .sub { color: #555; font-size: .85rem; margin: 0 0 16px; }
+  .sub code { background: #e9e9ec; padding: 1px 6px; border-radius: 6px; font-size: .8rem; }
+
+  #chat {
+    background: #fff; border: 1px solid #e2e2e6; border-radius: 12px;
+    padding: 16px; min-height: 260px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; line-height: 1.45; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: #0a7cff; color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
+  .msg.ai { align-self: flex-start; background: #f1f1f3; border: 1px solid #e2e2e6; color:#1a1a1a; border-bottom-left-radius: 4px; white-space: pre-wrap; }
+  .msg img { max-width: 100%; border-radius: 10px; margin-top: 8px; display: block; }
+  .msg .err { color: #d33; }
+  .thinking { font-style: italic; color: #777; }
+
+  .row { display: flex; gap: 8px; margin-top: 12px; }
+  #inp {
+    flex: 1; padding: 12px; border: 1px solid #d8d8dc; border-radius: 10px;
+    background: #fff; color: #1a1a1a; font-size: .95rem;
+  }
+  button {
+    padding: 12px 18px; border: none; border-radius: 10px;
+    background: #0a7cff; color: #fff; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .55; cursor: default; }
+  .hint { font-size: .78rem; color: #777; margin-top: 8px; }
+</style>
+
+<div class="wrap">
+  <h1>Pollinations Chatbot</h1>
+  <p class="sub">GPT-4o Mini (text) · Flux (images) — type <code>/image your prompt</code> to generate an image</p>
+
+  <div id="chat">
+    <div class="msg ai">Hey! I'm running on GPT-4o Mini. Ask me anything, or type <b>/image a neon city at night</b> to generate a picture with Flux.</div>
+  </div>
+
+  <div class="row">
+    <input id="inp" type="text" placeholder="Type a message…" autocomplete="off">
+    <button id="send">Send</button>
+  </div>
+  <p class="hint">Enter to send · Shift+Enter for newline</p>
+</div>
+
+<script>
+  const chat = document.getElementById("chat");
+  const inp = document.getElementById("inp");
+  const send = document.getElementById("send");
+
+  const SYSTEM = "You are a helpful assistant.";
+
+  function addMsg(role, html) {
+    const d = document.createElement("div");
+    d.className = "msg " + (role === "user" ? "user" : "ai");
+    d.innerHTML = html;
+    chat.appendChild(d);
+    return d;
+  }
+
+  async function askMini(userText) {
+    addMsg("user", userText);
+    const think = addMsg("ai", '<span class="thinking">Thinking…</span>');
+    send.disabled = true;
+    try {
+      const res = await fetch("https://text.pollinations.ai/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: SYSTEM },
+            { role: "user", content: userText }
+          ],
+          model: "openai" // GPT-4o Mini via OpenRouter
+        })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      think.textContent = text;
+    } catch (err) {
+      think.innerHTML = '<span class="err">Error talking to GPT-4o Mini.</span>';
+    }
+    send.disabled = false;
+  }
+
+  async function makeImage(prompt) {
+    addMsg("user", "/image " + prompt);
+    const think = addMsg("ai", '<span class="thinking">Generating image with Flux…</span>');
+    send.disabled = true;
+    try {
+      const url = "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?model=flux&nologo=true&width=768&height=768";
+      const img = new Image();
+      img.onload = () => { think.innerHTML = ""; think.appendChild(img); send.disabled = false; };
+      img.onerror = () => { think.innerHTML = '<span class="err">Error generating image.</span>'; send.disabled = false; };
+      img.src = url;
+      img.alt = prompt;
+    } catch (err) {
+      think.innerHTML = '<span class="err">Error generating image.</span>';
+      send.disabled = false;
+    }
+  }
+
+  function run() {
+    const text = inp.value.trim();
+    if (!text) return;
+    inp.value = "";
+    if (text.toLowerCase().startsWith("/image")) {
+      const prompt = text.slice(6).trim();
+      if (!prompt) { addMsg("ai", "Usage: <b>/image your prompt</b>"); return; }
+      makeImage(prompt);
+    } else {
+      askMini(text);
+    }
+  }
+
+  send.addEventListener("click", run);
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run(); }
+  });
+</script>
+</body>
+</html>
